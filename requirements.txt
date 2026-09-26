@@ -1,0 +1,4 @@
+mcp>=2.2.0
+transformers>=5.17.0
+requests>=2.34.2
+PyYAML>=6.0.3
