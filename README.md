@@ -10,6 +10,8 @@ The goal of this project is that I learn and understand:
 
 All these have been implemented and working properly in this project.
 
+https://github.com/user-attachments/assets/43c481ec-c879-496d-b039-ab8551406506
+
 It talks to a model (local via ollama, or a hosted API), calls tools and can use skills.
 
 ## Requirements
