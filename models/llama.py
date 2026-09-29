@@ -5,6 +5,8 @@ from models.common import probe_tools
 
 _DECODER = json.JSONDecoder()
 
+# Llama 3.1 has no tool-call delimiters - it emits a bare JSON object, and
+# with builtin tools an optional <|python_tag|> marker in front of it.
 _MARKERS = ("<|python_tag|>", "<|eom_id|>", "<|eot_id|>")
 
 

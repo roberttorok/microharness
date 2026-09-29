@@ -5,7 +5,8 @@ import json
 def parse_gemma_tool_calls(message):
     tool_calls = []
     block_pattern = re.compile(
-        r'<\|tool_call>\s*call:\s*([^{\s]+)\s*\{(.*?)\}<tool_call\|>', re.DOTALL)
+        r'<\|tool_call>\s*call:\s*([^{\s]+)\s*\{(.*?)\}\s*(?:<tool_call\|>|$)',
+        re.DOTALL)
     bare_key_pattern = re.compile(
         r'(?<=[{,\[])\s*([A-Za-z_][A-Za-z0-9_]*)\s*:')
 
@@ -35,7 +36,9 @@ def render_gemma_tools(self, tools):
     return "".join(re.findall(r'<\|tool>.*?<tool\|>', probe, re.DOTALL))
 
 def gemma_remove_tool_calling(message):
-    return re.sub(r'<\|tool_call>.*?<tool_call\|>', '', message, flags=re.DOTALL).strip()
+    # Closing tag optional: it may have been stripped as a stop sequence.
+    return re.sub(r'<\|tool_call>.*?(?:<tool_call\|>|$)', '', message,
+                  flags=re.DOTALL).strip()
 
 
 def render_gemma_tools(tokenizer, tools):

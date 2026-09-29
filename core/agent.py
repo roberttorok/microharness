@@ -19,6 +19,8 @@ from core.paths import PROMPTS_DIR
 from core.role import Role
 from core.utils import create_skill_switch_tool, create_system_prompt
 
+MAX_TOOL_ROUNDS = 40
+
 
 class Agent():
     def __init__(self, stack: AsyncExitStack, model_name):
@@ -170,11 +172,16 @@ class Agent():
     def resolve_tool(self, name):
         """(mcp, tool) for a model-facing name. A bare "c_compile" is accepted
         too when only one server has it: skill docs name tools that way, and
-        small models copy what they read."""
+        small models copy what they read. So is a bare server name such as
+        "docker-shell", when that server has exactly one tool."""
         if name in self.tool_index:
             return self.tool_index[name]
         matches = [entry for entry in self.tool_index.values()
                    if entry[1] == name]
+        if len(matches) == 1:
+            return matches[0]
+        matches = [entry for entry in self.tool_index.values()
+                   if entry[0]["name"] == name]
         return matches[0] if len(matches) == 1 else None
 
     def approve(self, server, tool, arguments):
@@ -231,7 +238,7 @@ class Agent():
             print("\n[interrupted - discarded]")
             self.draw_status()
 
-    async def _ask(self, question):
+    async def _ask(self, question, depth=0):
         if question:
             message = {
                 "role": Role.USER,
@@ -324,20 +331,27 @@ They are available from now on, in addition to the ones listed at the start of t
                     has_tool_call = True
                     continue
 
+                call_id = self.get_tool_id(tool_call["id"])
+                assistant_message["tool_calls"].append({
+                    "id": call_id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_call["name"],
+                        "arguments": tool_call["arguments"],
+                    }
+                })
+
                 resolved = self.resolve_tool(tool_call["name"])
-                if resolved:
+                if not resolved:
+                    # A made-up tool still gets a reply: dropping the call
+                    # silently ended the turn, and the model never learned
+                    # the tool does not exist.
+                    print(f"\n[no tool named {tool_call['name']} - told the model]")
+                    available = ", ".join(sorted([*self.tool_index, "switch_skill"]))
+                    text = (f"Error: there is no tool named {tool_call['name']}. "
+                            f"Available tools: {available}.")
+                else:
                     mcp, tool_name = resolved
-
-                    call_id = self.get_tool_id(tool_call["id"])
-                    assistant_message["tool_calls"].append({
-                        "id": call_id,
-                        "type": "function",
-                        "function": {
-                            "name": tool_call["name"],
-                            "arguments": tool_call["arguments"],
-                        }
-                    })
-
                     if self.approve(mcp["name"], tool_name, tool_call["arguments"]):
                         # now we process the tool calls sequantially, later maybe in parallel
                         mcp_result = await self.ticking(
@@ -352,20 +366,26 @@ They are available from now on, in addition to the ones listed at the start of t
                     else:
                         text = "The user did not permit this tool call."
 
-                    tool_responses.append({
-                        "role": Role.TOOL,
-                        "name": tool_call["name"],
-                        "tool_call_id": call_id,
-                        "content": text
-                    })
+                tool_responses.append({
+                    "role": Role.TOOL,
+                    "name": tool_call["name"],
+                    "tool_call_id": call_id,
+                    "content": text
+                })
 
-                    has_tool_call = True
+                has_tool_call = True
 
             if has_tool_call:
                 self.messages.append(assistant_message)
                 self.messages.extend(tool_responses)
                 self.messages.extend(extra_messages)
-                return await self._ask("")
+                if depth + 1 >= MAX_TOOL_ROUNDS:
+                    print(f"\n[reached {MAX_TOOL_ROUNDS} tool rounds - stopping]")
+                    note = ("[Stopped: too many tool calls in a row without a "
+                            "final answer.]")
+                    self.messages.append({"role": Role.ASSISTANT, "content": note})
+                    return note
+                return await self._ask("", depth + 1)
             else:
                 self.messages.append({
                     "role": Role.ASSISTANT,

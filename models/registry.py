@@ -64,7 +64,7 @@ models = [
         render_tools=render_gemma_tools,
         vision=True,
         image_placeholder="<|image|>",
-        options={"num_ctx": 16384}
+        options={"num_ctx": 16384, "stop": ["<end_of_turn>", "<tool_call|>"]}
     ),
     ModelSpec(
         name="llama3",
